@@ -59,11 +59,14 @@ data_download <- occ_download_get(gbif_download_key, overwrite = TRUE) %>%
 data_download1 <- occ_download_get(gbif_download_key1, overwrite = TRUE) %>%
   occ_download_import()
 
+# Data folder (create folder if not present in working directory)
+#dir.create("Data")
+
 # Papilionidae
 pap <- unique(data_download$species)
 pap_p <- for (i in 1:length(pap)){
   fila <- data_download[data_download$species == pap[i], ]
-  write.csv(fila, paste0("GBIF_Papilionidae/", pap[i], ".csv"), 
+  write.csv(fila, paste0("Data/GBIF_Papilionidae/", pap[i], ".csv"), 
             row.names = F)
 }
 
@@ -71,6 +74,6 @@ pap_p <- for (i in 1:length(pap)){
 pie <- unique(data_download1$species)
 pie_p <- for (i in 1:length(pie)){
   fila1 <- data_download1[data_download1$species == pie[i], ]
-  write.csv(fila1, paste0("GBIF_Pieridae/", pie[i], ".csv"), 
+  write.csv(fila1, paste0("Data/GBIF_Pieridae/", pie[i], ".csv"), 
             row.names = F)
 }
