@@ -7,6 +7,7 @@
 # Process: Spatial thinning of species occurrences
 ################
 
+#remotes::install_github("marlonecobos/ellipsenm2")
 library("ellipsenm")
 
 setwd("WORKING DIRECTORY")
