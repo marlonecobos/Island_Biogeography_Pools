@@ -9,7 +9,7 @@
 ################
 
 # Installing and loading packages
-install.packages("rgbif")
+#install.packages("rgbif")
 library(rgbif)
 
 setwd("WORKING DIRECTORY")
