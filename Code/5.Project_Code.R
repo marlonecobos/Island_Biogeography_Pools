@@ -72,24 +72,24 @@ for (i in 1:length(sp1)) {
                                         train_proportion = 0.75))
       
       if (class(sens) != "try-error") {
-        sensi[[i]] <- data.frame(Species = sp2[1, 1], sens$summary) 
+        sensi[[i]] <- data.frame(Species = sp2[1, 1], N = nrow(sp2), sens$summary) 
       } else {
         sensi[[i]] <- NULL
       }
       
       # creating the model with no replicates
       err <- try(ellipsoid_model(data = sp2, species = "Species",
-                                 longitude = "Longitude", 
+                                 longitude = "Longitude",
                                  latitude = "Latitude",
-                                 raster_layers = var_use, method = "covmat", 
-                                 level = 95, replicates = 10, 
+                                 raster_layers = var_use, method = "covmat",
+                                 level = 95, replicates = 10,
                                  percentage = 75,
                                  prediction = "suitability",
                                  return_numeric = FALSE, format = "GTiff",
-                                 overwrite = TRUE, 
+                                 overwrite = TRUE,
                                  output_directory = sp1[i]), silent = TRUE)
       if (class(err) == "try-error") {
-        errors[i] <- i 
+        errors[i] <- i
       }
     } else {
       message("\nNon positive definite or singular cov. matrix for species ", 
@@ -106,3 +106,25 @@ sensi <- do.call(rbind, sensi[lengths(sensi) > 0])
 
 # write sensitivity results
 write.csv(sensi, "sensitivity_results.csv", row.names = FALSE)
+
+# summary of results
+mean(sensi$mean_sensitivity)
+sd(sensi$mean_sensitivity)
+
+# plot of sensitivities as a function of number of records
+png("Sensitivity_results.png", width = 166, height = 90, units = "mm", 
+    res = 600)
+par(mfrow = c(1, 3), mar = c(4, 4, 0.5, 0.5), cex = 0.6)
+
+hist(sensi$mean_sensitivity, breaks = 50, xlab = "Mean sensitivity", main = "")
+box(bty = "o")
+
+plot(sensi[, c("N", "mean_sensitivity")], xlab = "Number of records", 
+     ylab = "Mean sensitivity", main = "", ylim = c(0, 1.05))
+legend("topleft", legend = "Sensitivity per record count",  bty = "n")
+
+plot(sensi[, c("N", "mean_sensitivity")], ylim = c(0, 1.05), xlim = c(0, 50), 
+     xlab = "Number of records", ylab = "Mean sensitivity", main = "", las = 1)
+legend("topleft", legend = "Results limited to ~50 records",  bty = "n")
+
+dev.off()
