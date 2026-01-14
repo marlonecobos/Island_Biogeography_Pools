@@ -51,5 +51,7 @@ rsconnect/
 # RStudio project
 *.Rproj
 
-# Data
+# Folders
 Data/
+Models/
+Results/
