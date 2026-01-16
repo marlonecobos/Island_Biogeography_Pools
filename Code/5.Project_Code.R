@@ -23,14 +23,8 @@ source("Code/Functions_ellip.R")
 vars <- list.files("Data/Rasters", pattern = ".tif", full.names = TRUE)
 var_stack <- terra::rast(vars)
 
-# Reading shapefile to crop the variables to area of interest
-shp <- vect("Data/Shapefiles/country.shp")
-
-# Cropping the variables
-var <- terra::crop(var_stack, shp, mask = T)
-
 # Selecting variables of interest
-var_use <- var[[c(3, 4, 1, 2)]]
+var_use <- var_stack[[c(3, 4, 1, 2)]]
 
 
 ######
@@ -96,7 +90,7 @@ for (i in 1:length(sp1)) {
               as.character(sp2[1, 1]))
     }
   } else {
-    message("\nSpecies ", sp1[i], "less than 5 records.............")
+    message("\nSpecies ", sp1[i], " less than 5 records.............")
   }
 }
 
