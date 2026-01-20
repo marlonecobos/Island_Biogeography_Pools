@@ -8,63 +8,39 @@
 ################
 
 # Installing and loading packages
-remotes::install_github("marlonecobos/ellipsenm")
-install.packages("geodata")
-install.packages("terra")
+#remotes::install_github("marlonecobos/ellipsenm2")
+#install.packages("terra")
 library(terra)
 library(ellipsenm)
-library(raster)
 
 # Establishing working directory
-setwd("WORKING DIRECTORY")
+#setwd("WORKING DIRECTORY")
 
 # Calling functions (it have to be on the same working directory)
-source("Functions_ellip.R")
+source("Code/Functions_ellip.R")
 
-# Downloading current variables from worldclim version 2.1
-cvars <- get_NWC_bio(period = "historical", res = "2.5m", time = NULL, SSP = NULL, 
-                     GCM = NULL, output_dir = "variable") 
-
-vars <- list.files("variables/wc2.1_5m_bio/", pattern = ".tif", full.names = TRUE)
+# Variables for models
+vars <- list.files("Data/Rasters", pattern = ".tif", full.names = TRUE)
 var_stack <- terra::rast(vars)
 
-# Reading shapefile to crop the variables to area of interest
-shp <- vect("country.shp")
-
-# Cropping the variables
-var <- terra::crop(var_stack, shp, mask = T)
-
-# Getting variable names
-name <- names(var)
-name1 <- gsub("wc2.1_2.5m_", "", name) 
-
-names(var) <- name1
-var_name <- paste0("variable/", name1, ".tif")
-
-# Saving cropped variables
-for (i in 1:nlayers(var)){
-  writeRaster(var[[i]], var_name[i], format = "GTiff", overwrite = TRUE)
-}
-
 # Selecting variables of interest
-var_use <- var[[c(15, 16, 5, 6)]]
+var_use <- var_stack[[c(3, 4, 1, 2)]]
 
-# Reading variables of interest
-var_use1 <- list.files(path = "Shapefiles/variable", pattern = ".tif", 
-                       full.names = TRUE)
-var_use <- stack(var_use1[c(7, 8, 15, 16)])
 
 ######
 # Reading occurrences
-sp <- list.files(path = "Final", pattern = ".csv$", full.names = TRUE)
-sp1 <- list.files(path = "Final", pattern = ".csv$", full.names = FALSE)
+sp <- list.files(path = "Data/Occurrences", pattern = ".csv$", full.names = TRUE)
+sp1 <- list.files(path = "Data/Occurrences", pattern = ".csv$", full.names = FALSE)
 sp1 <- paste0("Models/", sp1)
 
 errors <- vector()
+sensi <- list()
+
+dir.create("Models")
 
 for (i in 1:length(sp1)) {
   sp2 <- read.csv(file = sp[i])
-  ext <- extract(var_use, sp2[, c(2,3)])
+  ext <- extract(var_use, sp2[, c(2, 3)], ID = FALSE)
   
   non_na <- which(is.na(ext), arr.ind = T)[, 1]
   if (length(non_na) > 0) {
@@ -84,25 +60,65 @@ for (i in 1:length(sp1)) {
     
     # conditional running
     if (test == TRUE & test1 == TRUE) {
+      
+      sens <- try(ellipsoid_sensitivity(data = ext, variable_columns = 1:4, 
+                                        level = 0.95, iterations = 10, 
+                                        train_proportion = 0.75))
+      
+      if (class(sens) != "try-error") {
+        sensi[[i]] <- data.frame(Species = sp2[1, 1], N = nrow(sp2), sens$summary) 
+      } else {
+        sensi[[i]] <- NULL
+      }
+      
       # creating the model with no replicates
       err <- try(ellipsoid_model(data = sp2, species = "Species",
-                                 longitude = "Longitude", 
+                                 longitude = "Longitude",
                                  latitude = "Latitude",
-                                 raster_layers = var_use, method = "covmat", 
-                                 level = 95, replicates = 10, 
-                                 bootstrap_percentage = 75,
+                                 raster_layers = var_use, method = "covmat",
+                                 level = 95, replicates = 10,
+                                 percentage = 75,
                                  prediction = "suitability",
-                                 return_numeric = TRUE, format = "GTiff",
-                                 overwrite = TRUE, 
+                                 return_numeric = FALSE, format = "GTiff",
+                                 overwrite = TRUE,
                                  output_directory = sp1[i]), silent = TRUE)
       if (class(err) == "try-error") {
-        errors[i] <- i 
+        errors[i] <- i
       }
     } else {
       message("\nNon positive definite or singular cov. matrix for species ", 
               as.character(sp2[1, 1]))
     }
   } else {
-    message("\nSpecies ", sp1[i], "less than 5 records.............")
+    message("\nSpecies ", sp1[i], " less than 5 records.............")
   }
 }
+
+
+# Combine sensitivity results excluding those with no results
+sensi <- do.call(rbind, sensi[lengths(sensi) > 0])
+
+# write sensitivity results
+write.csv(sensi, "sensitivity_results.csv", row.names = FALSE)
+
+# summary of results
+mean(sensi$mean_sensitivity)
+sd(sensi$mean_sensitivity)
+
+# plot of sensitivities as a function of number of records
+png("Sensitivity_results.png", width = 166, height = 90, units = "mm", 
+    res = 600)
+par(mfrow = c(1, 3), mar = c(4, 4, 0.5, 0.5), cex = 0.6)
+
+hist(sensi$mean_sensitivity, breaks = 50, xlab = "Mean sensitivity", main = "")
+box(bty = "o")
+
+plot(sensi[, c("N", "mean_sensitivity")], xlab = "Number of records", 
+     ylab = "Mean sensitivity", main = "", ylim = c(0, 1.05))
+legend("topleft", legend = "Sensitivity per record count",  bty = "n")
+
+plot(sensi[, c("N", "mean_sensitivity")], ylim = c(0, 1.05), xlim = c(0, 50), 
+     xlab = "Number of records", ylab = "Mean sensitivity", main = "", las = 1)
+legend("topleft", legend = "Results limited to ~50 records",  bty = "n")
+
+dev.off()

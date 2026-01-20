@@ -10,8 +10,8 @@
 setwd("WORKING DIRECTORY")
 
 # loading packages
+#install.packages("terra")
 library(terra)
-library(sp)
 
 papi <- list.files(path = "Thinned/Papilionidae",
                    pattern = ".csv$", full.names = TRUE, recursive = T)
@@ -19,19 +19,21 @@ papi_names<- list.files(path = "Thinned/Papilionidae",
                         pattern = ".csv$", full.names = F, recursive = T)
 papi_names <- paste0("Final/", papi_names)
 
-carib <- rast("Shapefile/country.shp")
+carib <- vect("Data/Shapefiles/country.shp")
 
 for (i in 1:length(papi_names)){
   occ <- read.csv(papi[i])
   occ1 <- occ[, c("acceptedScientificName", "decimalLongitude", "decimalLatitude")]
   
-  occ1 <- SpatialPointsDataFrame(coords = occ1[, 2:3], data = occ,
-                                 proj4string = carib@proj4string, match.ID = F)
+  occ1 <- vect(occ1, geom = c("decimalLongitude", "decimalLatitude"), 
+               crs = crs(carib), keepgeom = TRUE)
   
   occ1 <- occ1[carib, ]
   
-  if (nrow(occ1@data) > 0){
-    write.csv(occ1@data, papi_names[i], row.names = F)
+  occ1 <- as.data.frame(occ1)
+  
+  if (nrow(occ1) > 0){
+    write.csv(occ1, papi_names[i], row.names = F)
   }
 }
 
@@ -46,12 +48,14 @@ for (i in 1:length(pier_names)){
   occ <- read.csv(pier[i])
   occ1 <- occ[, c("scientificName", "decimalLongitude", "decimalLatitude")]
   
-  occ1 <- SpatialPointsDataFrame(coords = occ1[, 2:3], data = occ,
-                                 proj4string = carib@proj4string, match.ID = F)
+  occ1 <- vect(occ1, geom = c("decimalLongitude", "decimalLatitude"), 
+               crs = crs(carib), keepgeom = TRUE)
   
   occ1 <- occ1[carib, ]
   
-  if (nrow(occ1@data) > 0){
-    write.csv(occ1@data, pier_names[i], row.names = F)
+  occ1 <- as.data.frame(occ1)
+  
+  if (nrow(occ1) > 0){
+    write.csv(occ1, pier_names[i], row.names = F)
   }
 }

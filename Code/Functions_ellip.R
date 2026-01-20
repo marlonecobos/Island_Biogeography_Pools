@@ -1,79 +1,3 @@
-# Download worldclim variables version 2.1
-#
-# argument options
-# period: "historical", "future"
-# res: 10m, 5m, 2.5m, 30s (30s only for historical)
-# time: 2021-2040, 2041-2060, 2061-2080, 2081-2100 (only for future) 
-# SSP: 126, 245, 370, 585 (only for future) 
-# GCM: BCC-CSM2-MR, CNRM-CM6-1, CNRM-ESM2-1, CanESM5, IPSL-CM6A-LR, MIROC-ES2L, 
-#      MIROC6, MRI-ESM2-0 (only for future) 
-# output_dir: the directory the user wants to put the results in 
-
-get_NWC_bio <- function(period, res, time = NULL, SSP = NULL, GCM = NULL, 
-                        output_dir = NULL) {
-  if (is.null(output_dir)) {dir <- getwd()} else {dir <- output_dir}
-  if (length(res) > 1) {stop("Argument 'res' must be of length 1.")}
-  
-  if (period[1] == "historical") {
-    if (any(!res %in% c("10m", "5m", "2.5m", "30s"))) {
-      stop("Argument 'res' must by any of: 10m, 5m, 2.5m, or 30s")
-    }
-    
-    url <- paste0("https://biogeo.ucdavis.edu/data/worldclim/v2.1/base/wc2.1_", 
-                  res, "_bio.zip")
-    
-    dir.create(dir)
-    dfile <- paste0(dir, "/wc2.1_", res, "_bio.zip")
-    
-    download.file(url, destfile = dfile, method = "auto", 
-                  quiet = FALSE, mode = "wb", cacheOK = TRUE)
-    
-    dfol <- paste0(dir, "/wc2.1_", res, "_bio")
-    dir.create(dfol)
-    unzip(zipfile = dfile, exdir = dfol)
-    
-    files <- list.files(dfol, pattern = ".tif$", full.names = TRUE, recursive = TRUE)
-    return(raster::stack(files))
-    
-  } else {
-    if (any(!res %in% c("10m", "5m", "2.5m"))) {
-      stop("Argument 'res' must by any of: 10m, 5m, or 2.5m")
-    }
-    
-    lens <- c(length(time), length(SSP), length(GCM))
-    if (any(lens > 1)) {
-      stop("Arguments 'time', 'SSP', and 'GCM' must be of length 1.")
-    }
-    
-    url <- paste0("http://biogeo.ucdavis.edu/data/worldclim/v2.1/fut/", 
-                  res, "/wc2.1_", res, "_bioc_", GCM, "_ssp", SSP, "_",
-                  time, ".zip")
-    
-    dir.create(dir)
-    dfile <- paste0(dir, "/wc2.1_", res, "_bioc_", GCM, "_ssp", SSP, "_",
-                    time, ".zip")
-    
-    download.file(url, destfile = dfile, method = "auto", 
-                  quiet = FALSE, mode = "wb", cacheOK = TRUE)
-    
-    dfol <- paste0(dir, "/wc2.1_", res, "_bioc_", GCM, "_ssp", SSP, "_", time)
-    dir.create(dfol)
-    unzip(zipfile = dfile, exdir = dfol)
-    
-    files <- list.files(dfol, pattern = ".tif$", full.names = TRUE, recursive = TRUE)
-    return(raster::stack(files))
-  }
-}
-
-
-citation_NWC_bio <- function(period) {
-  if (period[1] == "historical") {
-    cat("Fick, S.E. and R.J. Hijmans, 2017. WorldClim 2: New 1km spatial resolution climate surfaces\n\tfor global land areas. International Journal of Climatology 37 (12): 4302-4315.")
-  } else {
-    cat("For more information about climatic data derived from the CMIP6 project, please visit:\n\thttps://wcrp-cmip.github.io/CMIP6_CVs/docs/CMIP6_institution_id.html\n\thttp://bit.ly/2gBCuqM")
-  }
-}
-
 # function to check if matrix is positive definite
 is_pos_def <- function(x, tol = 1e-8) {
   eigenvalues <- eigen(x, only.values = TRUE)$values
@@ -84,4 +8,95 @@ is_pos_def <- function(x, tol = 1e-8) {
 # function to check if matrix is non-singular
 non_sing <- function(x, tol = 1e-8) {
   return(det(x) > tol)
+}
+
+
+# function to assess sensitivity of ellipsoids
+ellipsoid_sensitivity <- function(data, variable_columns, level = 0.95, 
+                                  iterations = 4, train_proportion = 0.7, 
+                                  tol = 1e-60) {
+  # Input validation
+  if (!is.data.frame(data)) {
+    stop("Argument 'data' must be a data.frame.")
+  }
+  if (!is.numeric(variable_columns) && !is.character(variable_columns)) {
+    stop("Argument 'variable_columns' must be numeric indices or character names.")
+  }
+  if (is.numeric(variable_columns) && any(variable_columns > ncol(data) | variable_columns < 1)) {
+    stop("Numeric 'variable_columns' are out of bounds.")
+  }
+  if (is.character(variable_columns) && !all(variable_columns %in% names(data))) {
+    stop("One or more 'variable_columns' not found in data.")
+  }
+  if (!is.numeric(level) || level <= 0 || level >= 1) {
+    stop("Argument 'level' must be a number between 0 and 1.")
+  }
+  if (!is.numeric(iterations) || iterations < 1) {
+    stop("Argument 'iterations' must be an integer greater than 0.")
+  }
+  if (!is.numeric(train_proportion) || train_proportion <= 0 || train_proportion >= 1) {
+    stop("Argument 'train_proportion' must be a number between 0 and 1.")
+  }
+  
+  iteration_results <- list()
+  
+  for (i in 1:iterations) {
+    # 1. Split data into training and testing sets
+    n_rows <- nrow(data)
+    train_size <- floor(train_proportion * n_rows)
+    train_indices <- sample(1:n_rows, size = train_size)
+    
+    train_data <- data[train_indices, variable_columns, drop = FALSE]
+    test_data <- data[-train_indices, variable_columns, drop = FALSE]
+    
+    # Handle case with only one variable column
+    if (is.vector(train_data)) {
+      train_data <- as.data.frame(train_data)
+      test_data <- as.data.frame(test_data)
+      names(train_data) <- names(test_data) <- if(is.character(variable_columns)) variable_columns else names(data)[variable_columns]
+    }
+    
+    # 2. In a loop use training data to get centroid and covar_matrix
+    centroid <- colMeans(train_data)
+    covar_matrix <- cov(train_data)
+    
+    # 3. Id which remaining data is inside or outside the limit.
+    maha_dist <- stats::mahalanobis(x = test_data,
+                                    center = centroid,
+                                    cov = covar_matrix,
+                                    tol = tol)
+    
+    cutoff <- stats::qchisq(level, df = length(variable_columns))
+    
+    inside_count <- sum(maha_dist <= cutoff)
+    outside_count <- sum(maha_dist > cutoff)
+    
+    total_test <- nrow(test_data)
+    sensitivity <- inside_count / total_test
+    omission <- outside_count / total_test
+    
+    # 4. For each iteration return how many records not used in training are inside and outside the limit.
+    iteration_results[[i]] <- data.frame(iteration = i,
+                                         inside = inside_count,
+                                         outside = outside_count,
+                                         sensitivity = sensitivity,
+                                         omission = omission)
+  }
+  
+  all_iterations <- do.call(rbind, iteration_results)
+  
+  # 5. return mean and SD of results from each iteration.
+  summary_stats <- data.frame(
+    mean_inside = mean(all_iterations$inside),
+    sd_inside = sd(all_iterations$inside),
+    mean_outside = mean(all_iterations$outside),
+    sd_outside = sd(all_iterations$outside),
+    mean_sensitivity = mean(all_iterations$sensitivity),
+    sd_sensitivity = sd(all_iterations$sensitivity),
+    mean_omission = mean(all_iterations$omission),
+    sd_omission = sd(all_iterations$omission)
+  )
+  
+  return(list(iteration_results = all_iterations,
+              summary = summary_stats))
 }
